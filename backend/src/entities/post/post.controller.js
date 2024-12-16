@@ -10,17 +10,22 @@ const { internal_errors } = require('../../errors/500-internal');
 module.exports = {
   async index(req, res) {
     try {
+      // variaveis
+      const page = req.query.page ? parseInt(req.query.page) : 1;  // 1 se n for passado
+      const pageSize = req.query.pageSize ? parseInt(req.query.pageSize) : 10;  // 10 se n for passado
+      const offset = (page - 1) * pageSize; // calculando o offset
+  
       //se tiver filtros
-      if (Object.keys(req.query)?.length) {
+      if (req.query.mapCenter && Array.isArray(req.query.mapCenter) && req.query.mapCenter.length === 2) {
+        const [longitude, latitude] = req.query.mapCenter;
+      
         const distanceAttr = sequelize.fn(
           'ST_DistanceSphere',
-          sequelize.literal(`latlng`),
-          sequelize.literal(
-            `ST_MakePoint(${req.query.mapCenter[1]}, ${req.query.mapCenter[0]})`
-          )
+          sequelize.literal('latlng'),
+          sequelize.literal(`ST_MakePoint(${latitude}, ${longitude})`)
         );
 
-        const posts = await Post.findAll({
+        const { count, rows } = await Post.findAndCountAll({
           include: [
             { model: Image },
             {
@@ -34,12 +39,21 @@ module.exports = {
             }),
           },
           order: [['updatedAt', 'DESC']],
+          limit: pageSize,
+          offset,
         });
 
-        console.log('posts com filtro ->', posts);
-        return res.json(posts);
+        return res.json({
+          data: rows,
+          pagination: {
+            page,
+            pageSize,
+            totalPages: Math.ceil(count / pageSize),
+            totalElements: count,
+          },
+        });
       } else {
-        const posts = await Post.findAll({
+        const { count, rows } = await Post.findAndCountAll({
           include: [
             { model: Image },
             {
@@ -48,13 +62,22 @@ module.exports = {
             },
           ],
           order: [['updatedAt', 'DESC']],
+          limit: pageSize,
+          offset,
         });
-
-        console.log('posts sem filtro', posts);
-        return res.json(posts);
+        
+        return res.json({
+          data: rows,
+          pagination: {
+            page,
+            pageSize,
+            totalPages: Math.ceil(count / pageSize),
+            totalElements: count,
+          },
+        });
       }
     } catch (error) {
-      console.log('error getting posts', error);
+      console.error('error getting posts', error);
       res.status(500).send();
     }
   },
